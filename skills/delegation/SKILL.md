@@ -34,15 +34,15 @@ Delegating keeps the main agent's context and time for design, review, and judgm
 
 ## How to delegate
 
-- Always explicitly set `model` when creating a subagent, choosing it from the table in "Model". Never leave `model` unspecified to fall back on a default or inherit the main agent's model.
+- Always explicitly set `model` when creating a subagent, and on Claude Code also `effort`, choosing both from the table in "Model". Never leave either unspecified to fall back on a default or inherit the main agent's settings. When the user names a model or effort level, use it instead.
 - On Codex, also explicitly choose `reasoning_effort` using the starting points below. Honor the user's model and effort choices, and use only combinations supported by the current delegation tool; API availability does not establish Codex availability.
-- For implementation, tests, and fact gathering, write the prompt with the sections below. Sonnet follows the prompt literally, so state the scope, the checks, and when to stop instead of leaving them implied.
+- For implementation, tests, and fact gathering, write the prompt with the sections below. Sonnet and Haiku follow the prompt literally, so state the scope, the checks, and when to stop instead of leaving them implied.
   1. **Goal**: what the change is for and the behavior that should result.
   2. **Design**: the paths of the files to change, the signatures of the types and functions to add or modify, the dependency direction between modules, the path the data flows through, and the points where the change connects to existing code. For tests, the situation, action, and expected result of each scenario. For fact gathering, the questions to answer and where to start looking.
   3. **Constraints**: the project conventions and instructions that apply, with an existing file to follow as the model where there is one.
   4. **Out of scope**: the files and behavior to leave untouched, and anything the design does not call for, such as extra abstractions, options, or tests.
   5. **Verification**: the exact commands to run (the project's tests, type-checker, or build, or the changed command itself) and what passing looks like. A syntax-only check or a command that failed to start does not count; if no real check can run, the subagent reports which check it did not run and why instead of reporting the work as done.
-  6. **Stop and report**: when the subagent finds a problem that needs a design decision, or would have to change something out of scope, it stops and reports instead of deciding.
+  6. **Stop and report**: when the subagent finds a problem that needs a design decision, or would have to change something out of scope, it stops and reports instead of deciding. Otherwise, it keeps working until everything in the goal is done and verified instead of handing the task back early.
   7. **Report format**: the changed files with a one-line summary each, the verification commands with their results, and anything left undone or uncertain. For fact gathering, observations with `file:line` references or log excerpts, kept separate from guesses.
 - For analysis delegated to Fable on Claude Code or Astra on Codex, give the goal, evidence, constraints, and acceptance criteria, and leave the investigative method to it. Include:
   1. **Goal and reason**: what to find out and what the main agent will do with the answer.
@@ -60,19 +60,20 @@ Delegating keeps the main agent's context and time for design, review, and judgm
 
 Choose the model by how much judgment remains in the delegated task, not by platform. Once the design is finalized and handed over, the judgment left to the subagent shrinks accordingly.
 
-On Claude Code, the default for delegated work is Sonnet; escalate to Opus only when it meets the Opus condition in the table below, and give the analysis in the Fable row to Fable.
+On Claude Code, the default for delegated work is Sonnet; give the bounded work in the Haiku rows to Haiku, escalate to Opus only when it meets the Opus condition in the table below, and give the analysis in the Fable row to Fable. When a Haiku result fails review or verification, re-delegate the unit to Sonnet with the failed checks and evidence instead of re-instructing Haiku, unless the cause was missing context or an environment failure; fix that first.
 
-| Platform | Role and task | Model |
-| --- | --- | --- |
-| Claude Code | Implementation with a finalized design: work that interlocks with existing code, repeated patterns, boilerplate, file moves and cleanup | Sonnet (`model: "sonnet"`) |
-| Claude Code | Writing tests for defined scenarios, and gathering facts: reproducing bugs, collecting logs, tracing code paths | Sonnet (`model: "sonnet"`) |
-| Claude Code | Implementation where defects easily survive undetected by tests, such as concurrency, transactions, security, and data migrations. Or an implementation that still fails review after re-instructing Sonnet | Opus (`model: "opus"`) |
-| Claude Code | Analysis that needs deep reasoning: reviewing complex changes, finding bugs, analyzing security vulnerabilities, diagnosing bugs | Fable (`model: "fable"`) |
-| Claude Code | Running long-running tests and builds and summarizing the results | Sonnet (`model: "sonnet"`) |
-| Claude Code | Broad code exploration: locating files and confirming existing conventions | Explore agent (`model: "sonnet"`) |
-| Codex | Scoped, repetitive implementation; tests for defined scenarios; fact gathering; running established tests and builds and summarizing results | Luna (`model: "gpt-6-luna"`) |
-| Codex | Complex implementation or tests with a finalized design, balancing quality with time and cost | Sol (`model: "gpt-6.1-sol"`) |
-| Codex | Deep review, security analysis, or diagnosis with ambiguous or conflicting evidence; implementation where errors have serious consequences and are hard to verify | Astra (`model: "gpt-6-astra"`) |
+| Platform | Role and task | Model | Effort |
+| --- | --- | --- | --- |
+| Claude Code | Mechanical implementation with a finalized design that barely interlocks with existing code: repeated patterns, boilerplate, file moves and cleanup | Haiku (`model: "haiku"`) | `medium` |
+| Claude Code | Implementation with a finalized design that interlocks with existing code. Or work from a Haiku row whose result fails review or verification | Sonnet (`model: "sonnet"`) | `medium` |
+| Claude Code | Writing tests for defined scenarios, and gathering facts: reproducing bugs, tracing code paths | Sonnet (`model: "sonnet"`) | `medium` |
+| Claude Code | Implementation where defects easily survive undetected by tests, such as concurrency, transactions, security, and data migrations. Or an implementation that still fails review after re-instructing Sonnet | Opus (`model: "opus"`) | `high` |
+| Claude Code | Analysis that needs deep reasoning: reviewing complex changes, finding bugs, analyzing security vulnerabilities, diagnosing bugs | Fable (`model: "fable"`) | `high` |
+| Claude Code | Running long-running tests and builds and summarizing the results, and collecting logs and stack traces | Haiku (`model: "haiku"`) | `low` |
+| Claude Code | Broad code exploration: locating files and confirming existing conventions | Explore agent (`model: "haiku"`) | `medium` |
+| Codex | Scoped, repetitive implementation; tests for defined scenarios; fact gathering; running established tests and builds and summarizing results | Luna (`model: "gpt-6-luna"`) | `low` |
+| Codex | Complex implementation or tests with a finalized design, balancing quality with time and cost | Sol (`model: "gpt-6.1-sol"`) | `medium` |
+| Codex | Deep review, security analysis, or diagnosis with ambiguous or conflicting evidence; implementation where errors have serious consequences and are hard to verify | Astra (`model: "gpt-6-astra"`) | `medium` |
 
 ### Codex selection and reasoning effort
 
