@@ -9,7 +9,7 @@ agent-settings/
 ├── AGENTS.md           # 프로젝트와 무관하게 적용하는 기본 지침
 └── skills/
     ├── code-design/    # 설계 전 기존 구현·과거 시도 조사, 선택지 제시, 영향 보고
-    ├── delegation/     # 서브에이전트 위임 여부, 위임 프롬프트, 모델 선택
+    ├── delegation/     # 서브에이전트 권장 모델·effort, 위임 프롬프트
     ├── implementation/ # 코드 작성·수정 원칙
     ├── testing/        # 테스트 전략과 작성 원칙
     └── commit/         # 커밋 메시지와 pull request 작성 형식
