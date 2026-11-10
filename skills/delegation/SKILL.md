@@ -1,36 +1,11 @@
 ---
 name: delegation
-description: Use when deciding whether to delegate work to a subagent and when writing the delegation prompt. Read it right before writing code after the design is finalized, writing tests, reproducing a bug or collecting logs, reviewing complex changes, hunting for bugs or vulnerabilities, debugging, or handing off long-running tests and builds.
+description: Use when spawning a subagent, to choose the recommended model and effort and to write the delegation prompt.
 ---
 
 # delegation
 
-The procedure the main agent follows when delegating work to subagents. Here, implementation means adding, modifying, or deleting repository files such as source code, tests, configuration, and scripts.
-
-## Roles
-
-- The main agent is the orchestrator. It owns requirements analysis, design decisions, planning, task decomposition, delegation prompts, result review, and final wrap-up, and it draws the conclusions of code investigation, root-cause analysis, and code review.
-- The main agent holds exclusive design authority. Decisions that form the skeleton of an implementation (architecture, module structure, interfaces and signatures, dependency direction, data flow, file layout, naming conventions) are finalized by the main agent before delegating.
-- A subagent implements the design the main agent finalized, exactly as specified, gathers the facts it was asked for, or analyzes code and reports its findings. It does not decide the design or adopt its own findings; the main agent does.
-
-## When to delegate
-
-Delegating keeps the main agent's context and time for design, review, and judgment. A precise delegation prompt keeps the cost of writing it and reviewing the result small, so delegation pays off even for small changes.
-
-- Once the design is finalized, delegate the implementation regardless of how many files it touches. When unsure whether a task is worth delegating, delegate it.
-- Also delegate:
-  - Writing tests for scenarios the main agent has defined
-  - Gathering facts, such as reproducing a bug, collecting logs and stack traces, and tracing the code path a request or value takes
-  - Running long-running tests and builds and summarizing the results
-  - Broad searches that span many directories and naming conventions, to an exploration-only subagent
-  - Analysis that needs deep reasoning, to Fable on Claude Code or Astra on Codex:
-    - Reviewing complex changes: changes that span several modules, or touch concurrency, transactions, or data migrations where defects easily survive tests, and any review the user asks for
-    - Finding bugs and analyzing security vulnerabilities
-    - Debugging up to the diagnosis: reproduction, root cause, and a proposed fix. The main agent confirms the root cause, finalizes the fix design, and delegates the fix as an implementation.
-- The main agent handles the following directly:
-  - Mechanical changes of one or two lines, such as typo or wording fixes
-  - Answering questions, concluding root causes from gathered facts or a diagnosis, and presenting designs and plans
-  - Reviewing routine delegated implementations, and confirming each finding a subagent reports before adopting it
+Recommended models and effort levels for subagents, and how to write the prompt for them. Here, implementation means adding, modifying, or deleting repository files such as source code, tests, configuration, and scripts.
 
 ## How to delegate
 
@@ -44,32 +19,49 @@ Delegating keeps the main agent's context and time for design, review, and judgm
   5. **Verification**: the exact commands to run (the project's tests, type-checker, or build, or the changed command itself) and what passing looks like. A syntax-only check or a command that failed to start does not count; if no real check can run, the subagent reports which check it did not run and why instead of reporting the work as done.
   6. **Stop and report**: when the subagent finds a problem that needs a design decision, or would have to change something out of scope, it stops and reports instead of deciding. Otherwise, it keeps working until everything in the goal is done and verified instead of handing the task back early.
   7. **Report format**: the changed files with a one-line summary each, the verification commands with their results, and anything left undone or uncertain. For fact gathering, observations with `file:line` references or log excerpts, kept separate from guesses.
-- For analysis delegated to Fable on Claude Code or Astra on Codex, give the goal, evidence, constraints, and acceptance criteria, and leave the investigative method to it. Include:
+- For analysis delegated to Astra on Codex or to Fable on Claude Code, give the goal, evidence, constraints, and acceptance criteria, and leave the investigative method to it. Include:
   1. **Goal and reason**: what to find out and what the main agent will do with the answer.
   2. **Material**: the change or code to examine (diff range, files, modules), the design intent behind it, and for a bug, the symptom, how it shows up, and what is already known.
   3. **Boundary**: the deliverable is the assessment. It reports and stops; it does not modify repository files or apply a fix.
   4. **Report format**: the conclusion first, then each finding with `file:line` evidence, its impact, and whether it was confirmed by running something or only by reading. For debugging, the reproduction, the root cause, and the proposed fix, limited to the smallest change that fixes the root cause.
 - Give each subagent exactly one unit of delegation. Do not bundle multiple tasks into one subagent; split them by unit and delegate each separately.
-- Run units that touch no common files and need no other unit's result as separate subagents at the same time. Delegate dependent units one at a time, after reviewing the result each depends on. Deep analysis can take many minutes; keep working on independent units while it runs.
-- If the instructions for an implementation are so vague or its scope so wide that the subagent would have to explore and decide on its own, the design is not finalized yet. Do not delegate as is; finalize the design first, then delegate.
-- Do not treat a subagent's result as done as is. The main agent reviews the changes directly, re-instructs the subagent specifically when needed, and checks the test and verification results as well. Confirm each analysis finding against the code or a reproduction before adopting it.
-- If Fable declines a security analysis, the main agent performs it directly and tells the user that it was declined.
-- If subagents are unavailable, do not skip the division of roles on your own. Tell the user that fact and which tasks are blocked.
+- Run units that touch no common files and need no other unit's result as separate subagents at the same time. Delegate dependent units one at a time, after the result each depends on is in. Deep analysis can take many minutes; keep working on independent units while it runs.
+
+## Keep usage low
+
+Subagent requests count toward the same usage limits as the main conversation, and everything a subagent reports enters the main agent's context, where it is billed at the main model's rate on every later request.
+
+- Use the lightest model and effort in the "Model" table that fit the task. Escalate only on the conditions the table names, not in advance.
+- In the delegation prompt, point to files by path and line range instead of pasting their contents; the subagent reads them at its own, lower rate. Paste only what it cannot read itself, such as the user's requirements or a design decision.
+- Ask for a short report. The subagent returns `file:line` references and the relevant excerpts of logs and command output, not whole files or full logs.
+- Review an implementation from its diff (`git diff` on the changed paths), reading surrounding code only where the diff alone cannot show correctness.
+- Delegate read-only searches to the Explore agent, which starts without CLAUDE.md and git status.
+- Gather the facts for one question in one unit instead of several small subagents, unless the parts are independent and worth running in parallel.
 
 ## Model
 
 Choose the model by how much judgment remains in the delegated task, not by platform. Once the design is finalized and handed over, the judgment left to the subagent shrinks accordingly.
 
-On Claude Code, the default for delegated work is Sonnet; give the bounded work in the Haiku rows to Haiku, escalate to Opus only when it meets the Opus condition in the table below, and give the analysis in the Fable row to Fable. When a Haiku result fails review or verification, re-delegate the unit to Sonnet with the failed checks and evidence instead of re-instructing Haiku, unless the cause was missing context or an environment failure; fix that first.
+On Claude Code, give Haiku only work where a wrong answer is cheap to spot, such as searching, reading logs, and summarizing, and keep code edits and judgment calls on Sonnet or above. Give implementation and tests to Sonnet, give UI implementation that needs design judgment to Opus, escalate other implementation to Opus only when it meets an Opus condition in the table below, and give Fable only the work its rows name.
+
+When a subagent's result falls short, escalate in this order instead of retrying unchanged:
+
+1. Give it a way to verify its own work, such as a test, a build, or a script, if the prompt lacked one.
+2. Raise effort one level.
+3. Move to the next model up, starting at a lower effort than the smaller model last used. Try Fable at `medium` before raising Opus past `high`.
+
+The per-token list prices of Fable 5.2, Opus 5.5, Sonnet 5.5, and Haiku 5.5 stand at roughly 80 : 40 : 20 : 1 ([pricing](https://platform.claude.com/docs/en/about-claude/pricing)). Haiku's rate rises fivefold on requests whose prompt exceeds 100K tokens and still stays at a quarter of Sonnet's, so a long Haiku task is no reason to switch to Sonnet. A higher price per token does not always mean a higher price per task, because a stronger model can finish in fewer tokens. Thinking tokens are billed as output, and effort controls how much the model thinks; Claude Code defaults Fable 5.2, Opus 5.5, Sonnet 5.5, and Haiku 5.5 to `medium` ([model configuration](https://code.claude.com/docs/en/model-config)). Check both pages and Anthropic's [model selection guide](https://claude.dev/blog/which-claude-model-should-you-build-with/) when updating model names, prices, or recommendations here.
 
 | Platform | Role and task | Model | Effort |
 | --- | --- | --- | --- |
-| Claude Code | Mechanical implementation with a finalized design that barely interlocks with existing code: repeated patterns, boilerplate, file moves and cleanup | Haiku (`model: "haiku"`) | `medium` |
-| Claude Code | Implementation with a finalized design that interlocks with existing code. Or work from a Haiku row whose result fails review or verification | Sonnet (`model: "sonnet"`) | `medium` |
-| Claude Code | Writing tests for defined scenarios, and gathering facts: reproducing bugs, tracing code paths | Sonnet (`model: "sonnet"`) | `medium` |
-| Claude Code | Implementation where defects easily survive undetected by tests, such as concurrency, transactions, security, and data migrations. Or an implementation that still fails review after re-instructing Sonnet | Opus (`model: "opus"`) | `high` |
-| Claude Code | Analysis that needs deep reasoning: reviewing complex changes, finding bugs, analyzing security vulnerabilities, diagnosing bugs | Fable (`model: "fable"`) | `high` |
-| Claude Code | Running long-running tests and builds and summarizing the results, and collecting logs and stack traces | Haiku (`model: "haiku"`) | `low` |
+| Claude Code | Gathering facts: tracing the code path a request or value takes, finding call sites, and reading documentation or web pages for specific facts | Haiku (`model: "haiku"`) | `medium` |
+| Claude Code | Running long-running tests and builds and summarizing the results, and collecting logs and stack traces | Haiku (`model: "haiku"`) | `medium` |
+| Claude Code | Implementation with a finalized design, including repeated patterns, boilerplate, and file moves and cleanup; writing tests for defined scenarios; reproducing bugs from given steps or symptoms | Sonnet (`model: "sonnet"`) | `medium`, then `high` |
+| Claude Code | UI implementation that needs no design judgment: following an existing screen or component pattern, adjusting text, spacing, or styles, adding a field to an existing form | Sonnet (`model: "sonnet"`) | `medium`, then `high` |
+| Claude Code | UI implementation that needs design judgment: new screens and components, layout, visual design, and interactions | Opus (`model: "opus"`) | `medium`, then `high` |
+| Claude Code | Implementation where defects easily survive undetected by tests, such as concurrency, transactions, security, and data migrations; performance work, even with a finalized design. Or an implementation that still fails review after Sonnet at `high` | Opus (`model: "opus"`) | `medium`, then `high` |
+| Claude Code | Major refactors and migrations that span many modules, such as replacing a framework or reorganizing the module structure. Or work that still fails at Opus `high` | Fable (`model: "fable"`) | `medium`, then `high` |
+| Claude Code | Deep analysis: reviewing complex changes, finding bugs, analyzing security vulnerabilities, diagnosing bugs with ambiguous or conflicting evidence | Fable (`model: "fable"`) | `medium`, then `high` |
 | Claude Code | Broad code exploration: locating files and confirming existing conventions | Explore agent (`model: "haiku"`) | `medium` |
 | Codex | Scoped, repetitive implementation; tests for defined scenarios; fact gathering; running established tests and builds and summarizing results | Luna (`model: "gpt-6-luna"`) | `low` |
 | Codex | Complex implementation or tests with a finalized design, balancing quality with time and cost | Sol (`model: "gpt-6.1-sol"`) | `medium` |
@@ -83,4 +75,4 @@ These are repository starting points adapted from OpenAI's [model selection guid
 - Choose by remaining uncertainty, verification difficulty, required quality, and the user's time and cost priorities. File count and time spent waiting for a build do not by themselves justify a stronger model. A finalized design does not remove implementation risk.
 - If quality takes precedence over cost and latency, prefer Astra for demanding work. Otherwise, retain the lightest model and effort that meet the task's acceptance criteria.
 - Before retrying, distinguish missing context, an unresolved design decision, or an environment failure from insufficient reasoning. Supply the missing evidence, resolve the design, or fix the environment first. For reasoning failures, increase effort or select a stronger model and pass along the failed checks and evidence; do not repeat an unchanged prompt indefinitely.
-- For recurring workflows, compare settings on the same representative inputs and acceptance criteria, including correctness, review rework, latency, and cost. Do not require duplicate model runs for every task. Model choice never transfers design authority or removes the main agent's review obligation.
+- For recurring workflows, compare settings on the same representative inputs and acceptance criteria, including correctness, review rework, latency, and cost. Do not require duplicate model runs for every task.
